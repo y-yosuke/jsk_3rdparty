@@ -24,6 +24,7 @@ add_message_files(
 add_action_files(
   DIRECTORY action
   FILES SwitchBotCommand.action
+  FILES SwitchBotStatus.action
 )
 
 generate_messages(

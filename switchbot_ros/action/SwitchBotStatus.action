@@ -1,0 +1,12 @@
+# Define the goal
+string device_name
+string command
+string parameter
+string command_type
+---
+# Define the result
+bool done
+string status_body
+---
+# Define a feedback message
+string status
