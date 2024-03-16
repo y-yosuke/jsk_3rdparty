@@ -2,37 +2,19 @@
 
 import os.path
 from requests import ConnectionError
+
 import rospy
-from switchbot_ros.switchbot import SwitchBotAPIClient
-from switchbot_ros.switchbot import DeviceError, SwitchBotAPIError
 from switchbot_ros.msg import Meter, PlugMini, Hub2, Bot, StripLight
+from switchbot_ros.switchbot_ros_client import SwitchBotROSClient
 
 
-class SwitchBotStatePublisher:
+class SwitchBotStatusPublisher:
     """
-    Publissh your switchbot status with ROS and SwitchBot API
+    Publish your switchbot status with ROS and SwitchBot API
     """
     def __init__(self):
-        # SwitchBot configs
-        # '~token' can be file path or raw characters
-        token = rospy.get_param('~token')
-        if os.path.exists(token):
-            with open(token) as f:
-                self.token = f.read().replace('\n', '')
-        else:
-            self.token = token
-
-        # Switchbot API v1.1 needs secret key
-        secret = rospy.get_param('~secret', None)
-        if secret is not None and os.path.exists(secret):
-            with open(secret, 'r', encoding='utf-8') as f:
-                self.secret = f.read().replace('\n', '')
-        else:
-            self.secret = secret
-
-        # Initialize switchbot client
-        self.bots = self.get_switchbot_client()
-        self.print_apiversion()
+        # Initialize SwitchBot ROS Client
+        self.client = SwitchBotROSClient()
         
         # Get parameters for publishing
         self.rate = rospy.get_param('~rate', 0.1)
@@ -45,15 +27,14 @@ class SwitchBotStatePublisher:
             rospy.logerr('No Device Name')
             return
         
+        # Set device type
         self.device_type = None
-        self.device_list = sorted(
-            self.bots.device_list,
-            key=lambda device: str(device.get('deviceName')))
-        for device in self.device_list:
-            device_name = str(device.get('deviceName'))
+        self.device_list = self.client.get_devices()
+        for device in self.device_list.devices:
+            device_name = device.name
             if self.device_name == device_name:
-                self.device_type = str(device.get('deviceType'))
-
+                self.device_type = device.type
+        
         if self.device_type:
             rospy.loginfo('deviceName: ' + self.device_name + ' / deviceType: ' + self.device_type)
         else:
@@ -65,7 +46,7 @@ class SwitchBotStatePublisher:
         
         # Publisher Message Class for each device type
         if self.device_type == 'Remote':
-            rospy.logerr('Device Type: "' + self.device_type + '" has no status in specifications.')
+            rospy.logerr('Device Type: "' + self.device_type + '" -> No status in SwitchBot API.')
             return
         else:
             if self.device_type == 'Meter':
@@ -93,27 +74,15 @@ class SwitchBotStatePublisher:
         rospy.loginfo('Ready: SwitchBot Status Publisher for ' + self.device_name)
 
 
-    def get_switchbot_client(self):
-        try:
-            client = SwitchBotAPIClient(token=self.token, secret=self.secret)
-            rospy.loginfo('Switchbot API Client initialized.')
-            return client
-        except ConnectionError:  # If the machine is not connected to the internet
-            rospy.logwarn_once('Failed to connect to the switchbot server. The client would try connecting to it when subscribes the ActionGoal topic.')
-            return None
-
-
     def spin(self):
         rate = rospy.Rate(self.rate)
         while not rospy.is_shutdown():
             rate.sleep()
-            if self.bots is None:
-                self.bots = self.get_switchbot_client()
             
             if self.device_type == 'Remote':
                 return
             else:
-                status = self.get_device_status(device_name=self.device_name)
+                status = self.client.device_status(device_name=self.device_name)
                 
                 if status:
                     time = rospy.get_rostime()
@@ -148,36 +117,15 @@ class SwitchBotStatePublisher:
                         msg.power        = status['power']
                         msg.color        = status['color']
                         msg.brightness   = status['brightness']
-                    else:
-                        return
                     
                     if msg:
                         self.status_pub.publish(msg)
 
 
-    def get_device_status(self, device_name=None):
-        if self.bots is None:
-            return
-        elif device_name:
-            status = self.bots.device_status(device_name=device_name)
-            return status
-        else:
-            return
-
-
-    def print_apiversion(self):
-        if self.bots is None:
-            return
-        
-        apiversion_str = 'Using SwitchBot API ';
-        apiversion_str += self.bots.api_version;
-        rospy.loginfo(apiversion_str)
-
-
 if __name__ == '__main__':
     try:
-        rospy.init_node('switchbot_state_publisher')
-        ssp = SwitchBotStatePublisher()
+        rospy.init_node('switchbot_status_publisher')
+        ssp = SwitchBotStatusPublisher()
         ssp.spin()
     except rospy.ROSInterruptException:
         pass

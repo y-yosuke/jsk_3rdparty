@@ -1,5 +1,6 @@
 import rospy
 import actionlib
+import json
 from switchbot_ros.msg import SwitchBotCommandAction
 from switchbot_ros.msg import SwitchBotCommandGoal
 from switchbot_ros.msg import DeviceArray
@@ -41,7 +42,32 @@ class SwitchBotROSClient(object):
         goal.command = command
         goal.parameter = parameter
         goal.command_type = command_type
+        goal.get_status = False
         self.action_client.send_goal(goal)
         if wait:
             self.action_client.wait_for_result()
             return self.action_client.get_result()
+
+    def device_status(self,
+                       device_name,
+                       wait=True
+                       ):
+
+        goal = SwitchBotCommandGoal()
+        goal.device_name = device_name
+        goal.command = ''
+        goal.parameter = ''
+        goal.command_type = ''
+        goal.get_status = True
+        self.action_client.send_goal(goal)
+        if wait:
+            self.action_client.wait_for_result()
+            result = self.action_client.get_result()
+            try:
+                status = json.loads(result.status_body)
+            except json.JSONDecodeError as e:
+                rospy.logerr('Data: "' + result.status_body
+                                + '" -> JSON Decode Error: ' + str(e))
+                return
+            return status
+

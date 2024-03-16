@@ -2,6 +2,7 @@
 
 import actionlib
 import os.path
+import json
 from requests import ConnectionError
 import rospy
 from switchbot_ros.msg import SwitchBotCommandAction
@@ -156,6 +157,7 @@ class SwitchBotAction:
         success = True
         # start executing the action
         parameter, command_type = goal.parameter, goal.command_type
+        get_status = goal.get_status
         if not parameter:
             parameter = 'default'
         if not command_type:
@@ -163,13 +165,20 @@ class SwitchBotAction:
         try:
             if not self.bots:
                 self.bots = SwitchBotAPIClient(token=self.token, secret=self.secret)
-            feedback.status = str(
-                self.bots.control_device(
-                    command=goal.command,
-                    parameter=parameter,
-                    command_type=command_type,
-                    device_name=goal.device_name
-                ))
+            if get_status:
+                response = self.bots.device_status(device_name=goal.device_name)
+                if type(response) == dict:
+                    feedback.status = json.dumps(response)
+                else:
+                    feedback.status = str(response)
+            else:
+                feedback.status = str(
+                    self.bots.control_device(
+                        command=goal.command,
+                        parameter=parameter,
+                        command_type=command_type,
+                        device_name=goal.device_name
+                    ))
         except (DeviceError, SwitchBotAPIError, KeyError) as e:
             rospy.logerr(str(e))
             feedback.status = str(e)
@@ -178,6 +187,7 @@ class SwitchBotAction:
             self._as.publish_feedback(feedback)
             r.sleep()
             result.done = success
+            result.status_body = feedback.status
             self._as.set_succeeded(result)
 
 
